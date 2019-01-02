@@ -3,8 +3,8 @@ import datetime as dt
 from tkinter.messagebox import askyesno
 
 class Clock(tk.Tk):
-    app_width = 120                                                             # Default 240
-    app_height = 160                                                            # Default 320
+    app_width = 240                                                             # Default 240
+    app_height = 320                                                            # Default 320
     app_mid_x = app_width // 2                                                  # Default 120
     app_margin_x = app_width // 6                                               # Default 40
     app_margin_y = app_height // 16                                             # Default 20
