@@ -60,30 +60,38 @@ class Clock(tk.Tk):
         self.canvas.bind("<ButtonRelease-1>", self.stop_move)
         self.canvas.bind("<B1-Motion>", self.on_motion)
         self.canvas.bind("<MouseWheel>", self.change_transparency)
-        self.bind('<Map>', self.restore) # added bindings to pass windows status to function
+        self.bind('<Map>', self.restore)
         self.bind('<Unmap>', self.restore)
         self.canvas.pack()
 
         ### Sync up the time by milliseconds as best as possible                ###
-        sec = int(dt.datetime.strftime(dt.datetime.now(), "%f"))//1000
-        self.after(ms=sec, func=self.get_time())
-        self.after(ms=1000, func=self.blue_moon)
+        sec = 60000 - int(dt.datetime.strftime(dt.datetime.now(), "%S%f"))//1000        
+        self.get_time(sec)
+        self.blue_moon()
 
-    def get_time(self):
+    def get_time(self, delay=60000):
+        ### Get the current time in HH:MM format and convert to binary for each digit
+        ### Update the corresponding window part(s) states based on the binary value
+        self.after(ms=delay, func=self.get_time)
         now = [f'{int(i):04b}' for i in dt.datetime.strftime(dt.datetime.now(), "%H%M")]
         for x, col in enumerate(now):
             for y, lights_on in enumerate(col):
+                #for win_part in self.windows[y][x]:
                 self.canvas.itemconfig(self.windows[y][x], state=tk.NORMAL if int(lights_on) else tk.DISABLED)
-        self.after(ms=1000, func=self.get_time)
 
     def change_transparency(self, event):
+        ### Event capturing for mouse scrolls to adjust transparency            ###
+        minimum_alpha = 0.3
+        maximum_alpha = 1.0
+
         transparency = self.transparency + event.delta/2400
-        if transparency >= 0.3 and transparency <= 1.0:
+        ### Trying out chain comparison                                         ###
+        if minimum_alpha <= transparency <= maximum_alpha:
             self.transparency = round(transparency, 2)
             self.wm_attributes("-alpha", self.transparency)
 
     def start_move(self, event):
-        ### Check for special events...
+        ### Check for special events...                                         ###
         if self.special_event() == self.door:
             if askyesno("Exit Confirmation", "Exit Townhouse Clock?"):
                 self.destroy()
@@ -110,17 +118,14 @@ class Clock(tk.Tk):
     
     def special_event(self):
         ### Determine if a special area was clicked for extra handling          ###
-        try:
-            clicked_tag = self.canvas.find_withtag(tk.CURRENT)[0]
+        tags = self.canvas.find_withtag(tk.CURRENT)
+        if tags:
+            clicked_tag = tags[0]
             if clicked_tag in self.door:
                 return self.door
             elif clicked_tag in self.moon:
                 return self.moon
-            else:
-                return None
-
-        ### TODO: Getting IndexError near the moon for some reason, see if can be narrowed down... ignored for now. ###
-        except IndexError:
+        else:
             return None
 
     def minimize(self):
@@ -137,22 +142,52 @@ class Clock(tk.Tk):
             self.wm_attributes("-alpha", self.transparency)
 
     def draw_window(self, canv, x, y, w, h):
-        ### Drawing of each window ###
+        ### Drawing individual window ###
+        window = 'window_x{x}y{y}'.format(x=x, y=y)
+        lights_bright_colour = 'yellow'
+        lights_on_colour = 'orange'
+        lights_off_colour = 'gray20'
+        drapes_on_colour = "olivedrab"
+        drapes_off_colour = "gray12"
+        frame_colour = '#201212'
         x2, y2 = x + w, y + h
-        window = canv.create_rectangle(x, y, x2, y2, fill='orange', disabledfill='gray20')
-        mid_x = w // 2 + x
-        mid_y = h // 2 + y
-        canv.create_line(mid_x, y, mid_x, y2)
-        canv.create_line(x, mid_y, x2, mid_y)
-        canv.itemconfig(window, state=tk.DISABLED)
+        x_div = w // 2.5
+        y_div = h // 3 * 2
+        ### Window light                                                        ###
+        canv.create_rectangle(x, y, x2, y2, 
+            activefill=lights_bright_colour, fill=lights_on_colour,
+            disabledfill=lights_off_colour, state=tk.DISABLED,
+            tags=window)
+        ### Left drape                                                          ###
+        canv.create_arc(
+            x - x_div, 
+            y - y_div, 
+            x + x_div, 
+            y + y_div, 
+            start=270, extent=87, 
+            fill=drapes_on_colour,
+            disabledfill=drapes_off_colour, outline="", state=tk.DISABLED,
+            tags=window)
+        ### Right drape                                                         ###
+        canv.create_arc(
+            x2 - x_div, 
+            y - y_div, 
+            x2 + x_div, 
+            y + y_div, 
+            start=183, extent=87, 
+            fill=drapes_on_colour,
+            disabledfill=drapes_off_colour, outline="", state=tk.DISABLED,
+            tags=window)
+        canv.create_rectangle(x, y, x2, y2, outline=frame_colour)
+        #window = (window_light, drape_left, drape_right)
 
-        ### Return the drawn window back layer to control the lights later      ###
+        ### Return the drawn layers to control the lights later      ###
         return window
 
     def draw_background(self, canv):
         ### Create The backdrop for the townhouse                               ###
-        night_colour = 'midnight blue'
-        ground_colour = 'dark slate gray'
+        night_colour = '#131030'                                                # 'midnight blue'
+        ground_colour = '#13402D'                                               # 'dark slate gray'
         moon_colour = 'lemon chiffon'
         blue_moon_colour = 'aquamarine'
         canv.config(background=night_colour, borderwidth=0.0, highlightthickness=0.0)
@@ -169,27 +204,28 @@ class Clock(tk.Tk):
                             self.app_width - moon_margin + moon_size,
                             moon_margin // 3 + moon_size
                         ]
-        self.moon = []
-        self.moon.append(canv.create_arc(*moon_boundary, start=240, extent=90, style=tk.CHORD, 
-                fill=moon_colour, disabledfill=blue_moon_colour, outline=moon_colour, disabledoutline=blue_moon_colour))
-        self.moon.append(canv.create_arc(*moon_boundary, start=270, extent=120, style=tk.CHORD, 
-                fill=moon_colour, disabledfill=blue_moon_colour, outline=moon_colour, disabledoutline=blue_moon_colour))
-        self.moon.append(canv.create_arc(*moon_boundary, start=300, extent=120, style=tk.CHORD, 
-                fill=moon_colour, disabledfill=blue_moon_colour, outline=moon_colour, disabledoutline=blue_moon_colour))
-        self.moon.append(canv.create_arc(*moon_boundary, start=330, extent=90, style=tk.CHORD, 
-                fill=moon_colour, disabledfill=blue_moon_colour, outline=moon_colour, disabledoutline=blue_moon_colour))
-        self.moon.append(canv.create_arc(*moon_boundary, start=0, extent=90, style=tk.CHORD, 
-                fill=moon_colour, disabledfill=blue_moon_colour, outline=moon_colour, disabledoutline=blue_moon_colour))
+        
+        ### The pieces that make up the shape of the moon (start, extent)       ###
+        moon_shape = [(240, 90), (270, 120), (300, 120), (330, 90), (0, 90)]
+        self.moon = [
+            canv.create_arc(
+                *moon_boundary, 
+                start=m_start, extent=m_extent, style=tk.CHORD, 
+                fill=moon_colour, disabledfill=blue_moon_colour, 
+                outline=moon_colour, disabledoutline=blue_moon_colour,
+                tags='moon')
+            for m_start, m_extent in moon_shape
+            ]
 
     def draw_house(self, canv):
         ### Draw the house                                                      ###
         self.house_colours = ['firebrick4', 'maroon', 'tomato4', 'OrangeRed4', 'sienna4', 'saddle brown']
-        self.house_colour = choice(self.house_colours)      # 'firebrick4' # 'saddle brown' # 'DarkOrange4'
-        self.door_colour = 'DarkOrange4'                    # 'saddle brown' # '#5F3F22' # 'brown4'
-        self.knob_colour = '#4E2D10'                        # 'burlywood4'
+        self.door_colour = '#4F1F1F'                                            # 'DarkOrange4' # 'saddle brown' # '#5F3F22' # 'brown4'
+        self.grout_colour = '#3F2F00'
+        self.knob_colour = '#5E3D30'                                            # 'burlywood4'
 
         self.draw_house_arc_with_bricks(
-            self.canvas,
+            canv,
             self.app_margin_x, 
             self.app_margin_y, 
             self.app_width - self.app_margin_x, 
@@ -213,9 +249,10 @@ class Clock(tk.Tk):
             self.app_margin_y * 3, 
             self.app_width - self.app_margin_x - 1, 
             self.app_margin_y * 3, 
-            fill=self.door_colour
+            fill=self.grout_colour
             )
-        ### Designate the areas in which the door is for exit purpose           ###        
+
+        ### Designate the areas where the door is for exit purpose              ###        
         self.door = []        
         door_x1 = self.app_mid_x - self.door_width // 2
         door_x2 = self.app_mid_x + self.door_width // 2
@@ -252,6 +289,8 @@ class Clock(tk.Tk):
             self.app_mid_x, 
             door_y2)
             )
+        
+        ### Draw the Knobs                                                      ###
         self.door.append(canv.create_oval(
             self.app_mid_x + knob_x - knob_size // 2,
             knob_y - knob_size // 2, 
@@ -268,16 +307,20 @@ class Clock(tk.Tk):
             )
 
     def draw_house_arc_with_bricks(self, canv, x1, y1, x2, y2):        
+        ### How many inner level of bricks within the arc                       ###
         divider = 4
         delta_x = (x2 - x1) // (2 * divider)
         delta_y = (y2 - y1) // (2 * divider)
+
+        ### Determines the numbe rof bricks from outward to inward level        ###
+        ### The smaller the steps (angles) the more the bricks                  ###
         steps = [15, 20, 30, 60]
         for dy, dx in enumerate(range(0, delta_x * divider, delta_x)):
             for i in range(0, 180, steps[dy]):
                 canv.create_arc(
                     x1 + dx, y1 + (dy * delta_y), x2 - dx, y2 - (dy * delta_y),
                     start=i, extent=steps[dy], 
-                    outline=self.door_colour, fill=choice(self.house_colours),
+                    outline=self.grout_colour, fill=choice(self.house_colours),
                     style=tk.PIESLICE
                     )        
         canv.create_arc(
@@ -290,30 +333,51 @@ class Clock(tk.Tk):
         width = (x2 - x1) // bricks.get('x')
         height = (y2 - y1) // bricks.get('y')
         delta_y = y1
-        while delta_y < y2:
+        even = 1
+        ### Using while here ensure even partial bricks are drawn to cover the entire house     ###
+        while delta_y < y2:                     
             delta_x = x1
             while delta_x < x2:
-                if delta_x == x1:
-                    x_end = delta_x + randint(0, width)
-                else:
-                    x_end = delta_x + width
+                ### Start at half length if the row is even                     ###
+                x_increm = width // 2 if delta_x == x1 and even else width
+                x_end = delta_x + x_increm
                 x_end = x_end if x_end <= x2 else x2
                 y_end = delta_y + height
-                y_end = y_end if y_end <= y2 else y2
-                canv.create_rectangle(delta_x, delta_y, x_end, y_end, outline=self.door_colour, fill=choice(self.house_colours))                
+                y_end = y_end if y_end <= y2 else y2                
+                canv.create_rectangle(delta_x, delta_y, x_end, y_end, outline=self.grout_colour, fill=choice(self.house_colours))                
                 delta_x = x_end
-            delta_y += height 
+            delta_y += height
+            even = abs(even - 1)            
 
-    def blue_moon(self, is_blue=False):
+    def blue_moon(self, to_blue=False):
+        ### Change the colour of the moon by a random interval                  ###
         next_blue = randint(300, 7200) * 1000
-        if is_blue:
+        ### Initiate the next blue_moon                                         ###
+        self.after(ms=next_blue, func=lambda: self.blue_moon(True))
+
+        if to_blue:
             for moon_piece in self.moon:
                 self.canvas.itemconfig(moon_piece, state=tk.DISABLED)
+
+            ### Only shine for 5 minutes                                        ###
             self.after(ms=300000, func=lambda: self.blue_moon(False))
+
         else:
             for moon_piece in self.moon:
                 self.canvas.itemconfig(moon_piece, state=tk.NORMAL)
-        self.after(ms=next_blue, func=lambda: self.blue_moon(True))
+
+
+    def draw_star(self):
+        pass
+
+    def can_create_star(self, canv, x, y, size=0):
+        ### Check if the potential star will overlap any drawn object           ###
+        cx = canv.canvasx(x)
+        cy = canv.canvasy(y)
+        if canv.find_overlapping(cx - 1, cy - 1, cx + size + 1, cy + size + 1):
+            return False
+        else:
+            return True
 
         
 def main():    
